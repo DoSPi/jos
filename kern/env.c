@@ -235,25 +235,25 @@ bind_functions(struct Env *e, struct Elf *elf)
 	*((int *) 0x00231010) = (int) &sys_exit;
 	*((int *) 0x0024100c) = (int) &sys_exit;
 	*/
-	struct Secthdr *sh, *s_sh, *e_sh, *symtab_hdr;
-	struct Elf32_Sym *symtab, *symtab_end;
-	uint32_t func_ptr;
-	char *strtab, *name;
-	s_sh = (struct Secthdr *) ((uint8_t *) elf + elf->e_shoff);
-	e_sh = s_sh + elf->e_shnum;
-	for (sh = s_sh; sh < e_sh; sh++) {
-		name = (char *) ((uint8_t *) elf + s_sh[elf->e_shstrndx].sh_offset + sh->sh_name);
+	struct Secthdr *symtab_hdr= NULL, *strtab_hdr = NULL;
+	struct Secthdr *s_sh = (struct Secthdr *) ((uint8_t *) elf + elf->e_shoff);
+	struct Secthdr *e_sh = s_sh + elf->e_shnum;
+	for (struct Secthdr *sh = s_sh; sh < e_sh; sh++) {
+		char * name = (char *) ((uint8_t *) elf + s_sh[elf->e_shstrndx].sh_offset + sh->sh_name);
 		if (sh->sh_type == ELF_SHT_SYMTAB && !strcmp(name, ".symtab"))
 			symtab_hdr = sh;
 		if (sh->sh_type == ELF_SHT_STRTAB && !strcmp(name, ".strtab"))
-			strtab = (char *) elf + sh->sh_offset;
+			strtab_hdr = sh;
 	}
-	symtab = (struct Elf32_Sym *) ((uint8_t *) elf + symtab_hdr->sh_offset);
-	symtab_end = (struct Elf32_Sym *) ((uint8_t *) symtab + symtab_hdr->sh_size);
+	struct Elf32_Sym *symtab = (struct Elf32_Sym *) ((uint8_t *) elf + symtab_hdr->sh_offset);
+	struct Elf32_Sym *symtab_end = (struct Elf32_Sym *) ((uint8_t *) symtab + symtab_hdr->sh_size);
 	for (; symtab < symtab_end; symtab++) {
-		if (ELF32_ST_BIND(symtab->st_info) == 1)
-			if ((func_ptr = (uint32_t) find_function(strtab + symtab->st_name)))
+		if (ELF32_ST_BIND(symtab->st_info) == 1){
+			uint32_t func_ptr = (uint32_t) find_function((char *)((uint8_t *)elf + strtab_hdr->sh_offset + symtab->st_name));
+			if (func_ptr){
 				*((uint32_t *) symtab->st_value) = func_ptr;
+			}
+		}
 	}
 	
 }
