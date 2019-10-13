@@ -12,7 +12,7 @@
 #include <kern/monitor.h>
 #include <kern/sched.h>
 #include <kern/cpu.h>
-
+#include <kern/kdebug.h>
 struct Env env_array[NENV];
 struct Env *curenv = NULL;
 struct Env *envs = env_array;		// All environments
@@ -121,8 +121,14 @@ env_init(void)
 {
 	// Set up envs array
 	//LAB 3: Your code here.
-	
-	// Per-CPU part of the initialization
+	env_free_list = NULL;
+	for (int i =NENV -1 ; i >= 0; i--){
+		envs[i].env_link = env_free_list;
+		env_free_list = &envs[i];
+		envs[i].env_id = 0;
+		envs[i].env_status = ENV_FREE;
+	}
+	// Per-CPU part of the initialization 
 	env_init_percpu();
 }
 
@@ -200,7 +206,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	e->env_tf.tf_ss = GD_KD | 0;
 	e->env_tf.tf_cs = GD_KT | 0;
 	//LAB 3: Your code here.
-	// e->env_tf.tf_esp = 0x210000;
+	e->env_tf.tf_esp = 0x210000 + 2 * PGSIZE * (e - envs);
 #else
 #endif
 	// You will set e->env_tf.tf_eip later.
@@ -229,6 +235,27 @@ bind_functions(struct Env *e, struct Elf *elf)
 	*((int *) 0x00231010) = (int) &sys_exit;
 	*((int *) 0x0024100c) = (int) &sys_exit;
 	*/
+	struct Secthdr *sh, *s_sh, *e_sh, *symtab_hdr;
+	struct Elf32_Sym *symtab, *symtab_end;
+	uint32_t func_ptr;
+	char *strtab, *name;
+	s_sh = (struct Secthdr *) ((uint8_t *) elf + elf->e_shoff);
+	e_sh = s_sh + elf->e_shnum;
+	for (sh = s_sh; sh < e_sh; sh++) {
+		name = (char *) ((uint8_t *) elf + s_sh[elf->e_shstrndx].sh_offset + sh->sh_name);
+		if (sh->sh_type == ELF_SHT_SYMTAB && !strcmp(name, ".symtab"))
+			symtab_hdr = sh;
+		if (sh->sh_type == ELF_SHT_STRTAB && !strcmp(name, ".strtab"))
+			strtab = (char *) elf + sh->sh_offset;
+	}
+	symtab = (struct Elf32_Sym *) ((uint8_t *) elf + symtab_hdr->sh_offset);
+	symtab_end = (struct Elf32_Sym *) ((uint8_t *) symtab + symtab_hdr->sh_size);
+	for (; symtab < symtab_end; symtab++) {
+		if (ELF32_ST_BIND(symtab->st_info) == 1)
+			if ((func_ptr = (uint32_t) find_function(strtab + symtab->st_name)))
+				*((uint32_t *) symtab->st_value) = func_ptr;
+	}
+	
 }
 #endif
 
@@ -275,10 +302,21 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	//LAB 3: Your code here.
+	struct Elf *elfhdr = (struct Elf *)binary;
+	struct Proghdr *ph, *eph;
+	ph = (struct Proghdr *) ((uint8_t *)elfhdr  + elfhdr->e_phoff);
+	eph = ph + elfhdr->e_phnum;
+	for (; ph < eph; ph++){
+		if (ph->p_type == ELF_PROG_LOAD){
+			memset((void*)ph->p_va, 0, ph->p_memsz);
+			memcpy((void*)ph->p_va, (void *)binary + ph->p_offset, ph->p_filesz);
+		}
+	}
+	e->env_tf.tf_eip= elfhdr->e_entry;
 	
 #ifdef CONFIG_KSPACE
 	// Uncomment this for task №5.
-	//bind_functions();
+	bind_functions(e, elfhdr);
 #endif
 }
 
@@ -292,6 +330,12 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 void
 env_create(uint8_t *binary, size_t size, enum EnvType type)
 {
+	struct Env *env;
+	if (env_alloc(&env, 0) != 0){
+		panic("env_alloc");
+	}
+	load_icode(env, binary,size);
+	env->env_type = type;
 	//LAB 3: Your code here.
 }
 
@@ -320,7 +364,9 @@ env_destroy(struct Env *e)
 {
 	//LAB 3: Your code here.
 	env_free(e);
-
+	if (e == curenv){
+		sched_yield();
+	}
 	cprintf("Destroyed the only environment - nothing more to do!\n");
 	while (1)
 		monitor(NULL);
@@ -402,7 +448,6 @@ env_run(struct Env *e)
 		    e->env_status == ENV_RUNNABLE ? "RUNNABLE" : "(unknown)",
 		ENVX(e->env_id));
 #endif
-
 	// Step 1: If this is a context switch (a new environment is running):
 	//	   1. Set the current environment (if any) back to
 	//	      ENV_RUNNABLE if it is ENV_RUNNING (think about
@@ -419,8 +464,15 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 	//
 	//LAB 3: Your code here.
+	if (curenv != e){
+		if (curenv && curenv->env_status == ENV_RUNNING){
+			curenv->env_status = ENV_RUNNABLE;	
+		}
+		curenv = e;
+		curenv->env_status = ENV_RUNNING;
+		curenv->env_runs++;
 
-
+	}
 	env_pop_tf(&e->env_tf);
 }
 
