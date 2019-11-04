@@ -165,6 +165,8 @@ success:
 
 void tsc_calibrate(void)
 {
+	cpu_freq = 1000000;
+	return;
     int i;
     for (i = 0; i < TIMES; i++) {
         if ((cpu_freq = quick_pit_calibrate()))
@@ -193,11 +195,23 @@ void print_timer_error(void)
 //Lab 5: You code here
 //Use print_time function to print timert result.
 //Use print_timer_error function to print error.
+static uint64_t tick;
+static int flag = 1;
 void timer_start(void)
 {
+	tick = read_tsc();
+	flag = 0;
 }
 
 void timer_stop(void)
 {
+	if (flag){
+		print_timer_error();
+		return;
+	}
+	flag = 1;
+	uint64_t new_tick = read_tsc();
+	print_time((new_tick - tick) / (cpu_freq * 1000));
+
 }
 
