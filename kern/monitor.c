@@ -26,11 +26,40 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{"page","display allocated pages",mon_page}
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
 /***** Implementations of basic kernel monitor commands *****/
+int
+mon_page(int argc, char **argv, struct Trapframe *tf)
+{
+	for (size_t i = 1; i < npages; i++){
+		cprintf("%d", i);
+		int is_free = (pages[i].pp_link != NULL);
+		size_t i_old = i++;
+		if (is_free){
+			while (i < npages && (pages[i].pp_link) != NULL){
+				i++;
+			}
+		} else{
+			while (i < npages && (pages[i].pp_link == NULL)){
+				i++;
+			}			
+		}
+		if (i - 1 != i_old){
+			cprintf("..%d", i - 1);
+		}
+		if (is_free){
+			cprintf(" FREE\n");
+		}
+		else{
+			cprintf(" ALLOCATED\n");
+		}
 
+	}
+	return 0;
+}
 int
 mon_help(int argc, char **argv, struct Trapframe *tf)
 {
