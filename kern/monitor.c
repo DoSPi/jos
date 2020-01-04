@@ -30,7 +30,7 @@ static struct Command commands[] = {
 	{"hello", "Display HELLO!", mon_hello},
     {"backtrace","Dislpay backtrace", mon_backtrace},
     {"timer_start","call timer_start", mon_timer_start},
-    {"timer_stop","call timer_stop", mon_timer_stop}
+    {"timer_stop","call timer_stop", mon_timer_stop},
 	{"page","display allocated pages",mon_page}
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
