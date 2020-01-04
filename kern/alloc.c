@@ -10,7 +10,7 @@ static uint8_t space[SPACE_SIZE];
 static Header base = { .s = { .next = (Header *) space, .prev = (Header *) space, .size = 0 } }; /* empty list to get started */
 
 static Header *freep = NULL; /* start of free list */
-
+static struct spinlock lock;
 
 static void check_list(void)
 {
@@ -33,16 +33,14 @@ test_alloc(uint8_t nbytes)
 {
 	Header *p;
 	unsigned nunits;
-
+	spin_lock(&lock);
 	nunits = (nbytes + sizeof(Header) - 1) / sizeof(Header) + 1;
-
 	if (freep == NULL) { /* no free list yet */
 		((Header *) &space)->s.next = (Header *) &base;
 		((Header *) &space)->s.prev = (Header *) &base;
 		((Header *) &space)->s.size = (SPACE_SIZE - sizeof(Header)) / sizeof(Header);
 		freep = &base;
 	}
-
 	check_list();
 
 	for(p = freep->s.next; ; p = p->s.next) {
@@ -56,9 +54,11 @@ test_alloc(uint8_t nbytes)
 				p += p->s.size;
 				p->s.size = nunits;
 			}
+			spin_unlock(&lock);
 			return (void *)(p + 1);
 		}
 		if (p == freep) { /* wrapped around free list */
+			spin_unlock(&lock);
 			return NULL;
 		}
 	}
@@ -69,8 +69,8 @@ void
 test_free(void *ap)
 {
 	Header *bp, *p;
+	spin_lock(&lock);
 	bp = (Header *) ap - 1; /* point to block header */
-
 	for (p = freep; !(bp > p && bp < p->s.next); p = p->s.next)
 		if (p >= p->s.next && (bp > p || bp < p->s.next))
 			break; /* freed block at start or end of arena */
@@ -95,5 +95,6 @@ test_free(void *ap)
 	freep = p;
 
 	check_list();
+	spin_unlock(&lock);
 }
 
