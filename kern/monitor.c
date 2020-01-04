@@ -27,6 +27,8 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{"hello", "Display HELLO!", mon_hello},
+    {"backtrace","Dislpay backtrace", mon_backtrace}
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
@@ -65,11 +67,30 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
+    uint32_t *ebp =(uint32_t*)read_ebp();
+    while (ebp){
+        cprintf("ebp %08x eip %08x args %08x %08x %08x %08x %08x\n",(uint32_t)ebp, ebp[1],
+                ebp[2],ebp[3], ebp[4], ebp[5],ebp [6]);
+        struct Eipdebuginfo info;
+        debuginfo_eip(ebp[1], &info); 
+        //cprintf("\t%s:%u: %.*s+%u\n",info.eip_file, info.eip_line,
+               // info.eip_fn_namelen, info.eip_fn_name, ebp[1] - info.eip_fn_addr);
+                cprintf("\t%.*s:%u: %.*s+%u\n", 32,
+            info.eip_file, info.eip_line,
+            info.eip_fn_namelen, info.eip_fn_name,
+            ebp[1] - info.eip_fn_addr);
+        ebp = (uint32_t*)*ebp;
+    }
 	// Your code here.
 	return 0;
 }
 
-
+int
+mon_hello(int argc, char **argv, struct Trapframe *tf)
+{
+	cprintf("HELLO!\n");
+	return 0;
+}
 
 /***** Kernel monitor command interpreter *****/
 

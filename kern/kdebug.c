@@ -126,7 +126,7 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	info->eip_fn_narg = 0;
 
 	// Find the relevant set of stabs
-	if (addr >= ULIM) {
+	if (addr < ULIM) {
 		stabs = __STAB_BEGIN__;
 		stab_end = __STAB_END__;
 		stabstr = __STABSTR_BEGIN__;
@@ -204,7 +204,12 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	//	Look at the STABS documentation and <inc/stab.h> to find
 	//	which one.
 	// Your code here.
-
+	stab_binsearch(stabs,&lline,&rline,N_SLINE, addr);
+	if (lline <=rline){
+		info->eip_line = stabs[lline].n_desc;
+	} else{
+		return -1;
+	}
 
 	// Search backwards from the line number for the relevant filename
 	// stab.
@@ -233,9 +238,17 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 uintptr_t
 find_function(const char * const fname)
 {
-	// const struct Stab *stabs = __STAB_BEGIN__, *stab_end = __STAB_END__;
-	// const char *stabstr = __STABSTR_BEGIN__, *stabstr_end = __STABSTR_END__;
+	const struct Stab *stabs = __STAB_BEGIN__, *stab_end = __STAB_END__;
+	const char *stabstr = __STABSTR_BEGIN__;//*stabstr_end = __STABSTR_END__;
 	//LAB 3: Your code here.
+	for (const struct Stab * stab = stabs ; stab < stab_end; stab++){
+		if (stab->n_type == N_FUN){
+			int len = strfind(&stabstr[stab->n_strx],':') - &stabstr[stab->n_strx];
+			if (strncmp(fname,&stabstr[stab->n_strx], len) == 0 && strlen(fname) == len){
+				return stab->n_value;
+			}
+		}
+	}
 
 	return 0;
 }

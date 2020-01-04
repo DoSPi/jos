@@ -13,7 +13,7 @@
 #include <kern/monitor.h>
 #include <kern/sched.h>
 #include <kern/cpu.h>
-
+#include <kern/kdebug.h>
 #ifdef CONFIG_KSPACE
 struct Env env_array[NENV];
 struct Env *curenv = NULL;
@@ -127,8 +127,14 @@ env_init(void)
 {
 	// Set up envs array
 	//LAB 3: Your code here.
-	
-	// Per-CPU part of the initialization
+	env_free_list = NULL;
+	for (int i =NENV -1 ; i >= 0; i--){
+		envs[i].env_link = env_free_list;
+		env_free_list = &envs[i];
+		envs[i].env_id = 0;
+		envs[i].env_status = ENV_FREE;
+	}
+	// Per-CPU part of the initialization 
 	env_init_percpu();
 }
 
@@ -256,7 +262,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	e->env_tf.tf_ss = GD_KD | 0;
 	e->env_tf.tf_cs = GD_KT | 0;
 	//LAB 3: Your code here.
-	// e->env_tf.tf_esp = 0x210000;
+	e->env_tf.tf_esp = 0x210000 + 2 * PGSIZE * (e - envs);
 #else
 	e->env_tf.tf_ds = GD_UD | 3;
 	e->env_tf.tf_es = GD_UD | 3;
@@ -312,6 +318,27 @@ bind_functions(struct Env *e, struct Elf *elf)
 	*((int *) 0x00231010) = (int) &sys_exit;
 	*((int *) 0x0024100c) = (int) &sys_exit;
 	*/
+	struct Secthdr *symtab_hdr= NULL, *strtab_hdr = NULL;
+	struct Secthdr *s_sh = (struct Secthdr *) ((uint8_t *) elf + elf->e_shoff);
+	struct Secthdr *e_sh = s_sh + elf->e_shnum;
+	for (struct Secthdr *sh = s_sh; sh < e_sh; sh++) {
+		char * name = (char *) ((uint8_t *) elf + s_sh[elf->e_shstrndx].sh_offset + sh->sh_name);
+		if (sh->sh_type == ELF_SHT_SYMTAB && !strcmp(name, ".symtab"))
+			symtab_hdr = sh;
+		if (sh->sh_type == ELF_SHT_STRTAB && !strcmp(name, ".strtab"))
+			strtab_hdr = sh;
+	}
+	struct Elf32_Sym *symtab = (struct Elf32_Sym *) ((uint8_t *) elf + symtab_hdr->sh_offset);
+	struct Elf32_Sym *symtab_end = (struct Elf32_Sym *) ((uint8_t *) symtab + symtab_hdr->sh_size);
+	for (; symtab < symtab_end; symtab++) {
+		if (ELF32_ST_BIND(symtab->st_info) == 1){
+			uint32_t func_ptr = (uint32_t) find_function((char *)((uint8_t *)elf + strtab_hdr->sh_offset + symtab->st_name));
+			if (func_ptr){
+				*((uint32_t *) symtab->st_value) = func_ptr;
+			}
+		}
+	}
+	
 }
 #endif
 
@@ -369,10 +396,21 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	//LAB 3: Your code here.
+	struct Elf *elfhdr = (struct Elf *)binary;
+	struct Proghdr *ph, *eph;
+	ph = (struct Proghdr *) ((uint8_t *)elfhdr  + elfhdr->e_phoff);
+	eph = ph + elfhdr->e_phnum;
+	for (; ph < eph; ph++){
+		if (ph->p_type == ELF_PROG_LOAD){
+			memset((void*)ph->p_va, 0, ph->p_memsz);
+			memcpy((void*)ph->p_va, (void *)binary + ph->p_offset, ph->p_filesz);
+		}
+	}
+	e->env_tf.tf_eip= elfhdr->e_entry;
 	
 #ifdef CONFIG_KSPACE
 	// Uncomment this for task №5.
-	//bind_functions();
+	bind_functions(e, elfhdr);
 #endif
 	// Now map USTACKSIZE for the program's initial stack
 	// at virtual address USTACKTOP - USTACKSIZE.
@@ -398,6 +436,12 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 void
 env_create(uint8_t *binary, size_t size, enum EnvType type)
 {
+	struct Env *env;
+	if (env_alloc(&env, 0) != 0){
+		panic("env_alloc");
+	}
+	load_icode(env, binary,size);
+	env->env_type = type;
 	//LAB 3: Your code here.
 }
 
@@ -467,7 +511,9 @@ env_destroy(struct Env *e)
 {
 	//LAB 3: Your code here.
 	env_free(e);
-
+	if (e == curenv){
+		sched_yield();
+	}
 	cprintf("Destroyed the only environment - nothing more to do!\n");
 	while (1)
 		monitor(NULL);
@@ -557,7 +603,6 @@ env_run(struct Env *e)
 		    e->env_status == ENV_RUNNABLE ? "RUNNABLE" : "(unknown)",
 		ENVX(e->env_id));
 #endif
-
 	// Step 1: If this is a context switch (a new environment is running):
 	//	   1. Set the current environment (if any) back to
 	//	      ENV_RUNNABLE if it is ENV_RUNNING (think about
@@ -575,10 +620,15 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 	//
 	//LAB 3: Your code here.
-
-
+	if (curenv != e){
+		if (curenv && curenv->env_status == ENV_RUNNING){
+			curenv->env_status = ENV_RUNNABLE;	
+		}
+		curenv = e;
+		curenv->env_status = ENV_RUNNING;
+		curenv->env_runs++;
 	//LAB 8: Your code here.
-
+	}
 	env_pop_tf(&e->env_tf);
 }
 
