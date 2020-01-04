@@ -18,4 +18,5 @@ int mon_backtrace(int argc, char **argv, struct Trapframe *tf);
 int mon_hello(int argc, char **argv, struct Trapframe *tf);
 int mon_timer_start(int argc, char **argv, struct Trapframe *tf);
 int mon_timer_stop(int argc, char **argv, struct Trapframe *tf);
+int mon_page(int argc, char **argv, struct Trapframe *tf);
 #endif	// !JOS_KERN_MONITOR_H
