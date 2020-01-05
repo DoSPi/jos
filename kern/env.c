@@ -195,6 +195,9 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	// LAB 8: Your code here.
+	e->env_pgdir = page2kva(p);
+	(p->pp_ref)++;
+	memcpy(e->env_pgdir, kern_pgdir, PGSIZE);
 
 	// UVPT maps the env's own page table read-only.
 	// Permissions: kernel R, user R
@@ -294,6 +297,13 @@ static void
 region_alloc(struct Env *e, void *va, size_t len)
 {
 	// LAB 8: Your code here.
+	uint8_t *addr;
+	struct PageInfo *pp;
+
+	for (addr = ROUNDDOWN(va, PGSIZE); addr < ROUNDUP((uint8_t *) va + len, PGSIZE); addr += PGSIZE) {
+		if (!(pp = page_alloc(0)) || page_insert(e->env_pgdir, pp, addr, PTE_W | PTE_U) < 0)
+			panic("region_alloc: out of memory %p %u", va, len);
+	}
 	// (But only if you need it for load_icode.)
 	//
 	// Hint: It is easier to use region_alloc if the caller can pass
@@ -398,10 +408,12 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	//LAB 3: Your code here.
 	struct Elf *elfhdr = (struct Elf *)binary;
 	struct Proghdr *ph, *eph;
+	lcr3(PADDR(e->env_pgdir));
 	ph = (struct Proghdr *) ((uint8_t *)elfhdr  + elfhdr->e_phoff);
 	eph = ph + elfhdr->e_phnum;
 	for (; ph < eph; ph++){
 		if (ph->p_type == ELF_PROG_LOAD){
+			region_alloc(e, (void *) ph->p_va, ph->p_memsz);
 			memset((void*)ph->p_va, 0, ph->p_memsz);
 			memcpy((void*)ph->p_va, (void *)binary + ph->p_offset, ph->p_filesz);
 		}
@@ -415,6 +427,8 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	// Now map USTACKSIZE for the program's initial stack
 	// at virtual address USTACKTOP - USTACKSIZE.
 	// LAB 8: Your code here.
+	region_alloc(e, (void *) (USTACKTOP - PGSIZE), PGSIZE);
+	lcr3(PADDR(kern_pgdir));
 
 #ifdef SANITIZE_USER_SHADOW_BASE
 	region_alloc(e, (void *) SANITIZE_USER_SHADOW_BASE, SANITIZE_USER_SHADOW_SIZE);
@@ -627,8 +641,9 @@ env_run(struct Env *e)
 		curenv = e;
 		curenv->env_status = ENV_RUNNING;
 		curenv->env_runs++;
-	//LAB 8: Your code here.
 	}
+	//LAB 8: Your code here.
+	lcr3(PADDR(e->env_pgdir));
 	env_pop_tf(&e->env_tf);
 }
 
