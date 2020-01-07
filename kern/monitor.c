@@ -27,11 +27,56 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{"hello", "Display HELLO!", mon_hello},
+    {"backtrace","Dislpay backtrace", mon_backtrace},
+    {"timer_start","call timer_start", mon_timer_start},
+    {"timer_stop","call timer_stop", mon_timer_stop},
+	{"page","display allocated pages",mon_page}
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
 /***** Implementations of basic kernel monitor commands *****/
+int
+mon_timer_start(int argc, char **argv, struct Trapframe *tf)
+{
+    timer_start();
+    return 0;
+}
+int
+mon_timer_stop(int argc, char **argv, struct Trapframe *tf)
+{
+    timer_stop();
+    return 0;
+}
+int
+mon_page(int argc, char **argv, struct Trapframe *tf)
+{
+	for (size_t i = 1; i < npages; i++){
+		cprintf("%d", i);
+		int is_free = (pages[i].pp_link != NULL);
+		size_t i_old = i++;
+		if (is_free){
+			while (i < npages && (pages[i].pp_link) != NULL){
+				i++;
+			}
+		} else{
+			while (i < npages && (pages[i].pp_link == NULL)){
+				i++;
+			}			
+		}
+		if (i - 1 != i_old){
+			cprintf("..%d", i - 1);
+		}
+		if (is_free){
+			cprintf(" FREE\n");
+		}
+		else{
+			cprintf(" ALLOCATED\n");
+		}
 
+	}
+	return 0;
+}
 int
 mon_help(int argc, char **argv, struct Trapframe *tf)
 {
@@ -65,11 +110,30 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
+    uint32_t *ebp =(uint32_t*)read_ebp();
+    while (ebp){
+        cprintf("ebp %08x eip %08x args %08x %08x %08x %08x %08x\n",(uint32_t)ebp, ebp[1],
+                ebp[2],ebp[3], ebp[4], ebp[5],ebp [6]);
+        struct Eipdebuginfo info;
+        debuginfo_eip(ebp[1], &info); 
+        //cprintf("\t%s:%u: %.*s+%u\n",info.eip_file, info.eip_line,
+               // info.eip_fn_namelen, info.eip_fn_name, ebp[1] - info.eip_fn_addr);
+                cprintf("\t%.*s:%u: %.*s+%u\n", 32,
+            info.eip_file, info.eip_line,
+            info.eip_fn_namelen, info.eip_fn_name,
+            ebp[1] - info.eip_fn_addr);
+        ebp = (uint32_t*)*ebp;
+    }
 	// Your code here.
 	return 0;
 }
 
-
+int
+mon_hello(int argc, char **argv, struct Trapframe *tf)
+{
+	cprintf("HELLO!\n");
+	return 0;
+}
 
 /***** Kernel monitor command interpreter *****/
 

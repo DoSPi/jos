@@ -41,6 +41,7 @@ _start = RELOC(entry)
 
 .globl entry
 entry:
+	cli
 	movw	$0x1234,0x472			# warm boot
 
 	# We haven't set up virtual memory yet, so we're running from
@@ -125,6 +126,7 @@ _generall_syscall:
 .globl sys_yield
 .type  sys_yield, @function
 sys_yield:
+	cli
 	call _generall_syscall
 	call csys_yield
 	jmp .
@@ -136,6 +138,8 @@ sys_yield:
 .globl sys_exit
 .type  sys_exit, @function
 sys_exit:
+	cli
+	movl $(bootstacktop), %esp
 	call csys_exit
 	jmp .
 #endif
