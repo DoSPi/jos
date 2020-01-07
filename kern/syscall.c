@@ -279,6 +279,38 @@ sys_page_unmap(envid_t envid, void *va)
 	page_remove(e->env_pgdir, va);
 	return 0;
 }
+static int
+sys_page_map_unp(envid_t srcenvid, void *srcva,
+	     envid_t dstenvid, void *dstva, int perm)
+{
+	// Hint: This function is a wrapper around page_lookup() and
+	//   page_insert() from kern/pmap.c.
+	//   Again, most of the new code you write should be to check the
+	//   parameters for correctness.
+	//   Use the third argument to page_lookup() to
+	//   check the current permissions on the page.
+
+	// LAB 9: Your code here.
+	//panic("sys_page_map not implemented");
+	struct Env *srcenv, *dstenv;
+	struct PageInfo *pp;
+	pte_t *ptep;
+
+	if (envid2env(srcenvid, &srcenv, 0 )< 0 || envid2env(dstenvid, &dstenv, 0) < 0) {
+		return -E_BAD_ENV;
+	}
+	if ((uintptr_t) srcva >= UTOP || (uintptr_t) srcva % PGSIZE ||
+		(uintptr_t) dstva >= UTOP || (uintptr_t) dstva % PGSIZE || perm & ~PTE_SYSCALL) {
+		return -E_INVAL;
+	}
+	if (!(pp = page_lookup(srcenv->env_pgdir, srcva, &ptep)) || (!(*ptep & PTE_W) && perm & PTE_W)) {
+		return -E_INVAL;
+	}
+	if (page_insert(dstenv->env_pgdir, pp, dstva, perm | PTE_U | PTE_P)) {
+		return -E_NO_MEM;
+	}
+	return 0;
+}
 
 // Try to send 'value' to the target env 'envid'.
 // If srcva < UTOP, then also send page currently mapped at 'srcva',
@@ -333,11 +365,13 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 		return -E_IPC_NOT_RECV;
 	}
 	if ((uintptr_t) srcva < UTOP && (uintptr_t) target->env_ipc_dstva < UTOP) {
-		if ((err = sys_page_map(0, srcva, envid, target->env_ipc_dstva, perm)) < 0) {
+		if ((err = sys_page_map_unp(0, srcva, envid, target->env_ipc_dstva, perm)) < 0) {
 			return err;
 		}
+	}else{
 		perm = 0;
 	}
+
 	target->env_ipc_recving = 0;
 	target->env_ipc_value = value;
 	target->env_ipc_from = curenv->env_id;
@@ -366,7 +400,7 @@ sys_ipc_recv(void *dstva)
 		return -E_INVAL;
 	}
 	curenv->env_ipc_dstva = (uintptr_t) dstva < UTOP ? dstva : 0;
-	curenv->env_ipc_recving = true;
+	curenv->env_ipc_recving = 1;
 	curenv->env_status = ENV_NOT_RUNNABLE;
 	curenv->env_tf.tf_regs.reg_eax = 0;
 	sched_yield();

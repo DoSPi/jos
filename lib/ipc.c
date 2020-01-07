@@ -28,8 +28,8 @@ ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
 #ifdef SANITIZE_USER_SHADOW_BASE
 	// platform_asan_unpoison(pg, PGSIZE);
 #endif
-	int err;
-	if ((err = sys_ipc_recv(pg ? pg : (void *) -1))) {
+	int err= sys_ipc_recv(pg ? pg : (void *) -1);
+	if ( err < 0) {
 		if (from_env_store){
 			*from_env_store = 0;
 		}
