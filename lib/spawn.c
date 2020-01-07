@@ -314,6 +314,22 @@ map_segment(envid_t child, uintptr_t va, size_t memsz,
 static int
 copy_shared_pages(envid_t child)
 {
+	void *addr;
+	int err;
+	size_t i, j, pn;
+	for (i = 0; i < PGSIZE / sizeof(pde_t); i++) {
+		if (!(uvpd[i] & PTE_P)) {
+			continue;
+		}
+		for (j = 0; j < PGSIZE / sizeof(pte_t); j++) {
+			pn = PGNUM(addr = PGADDR(i, j, 0));
+			if (pn < PGNUM(UTOP) && uvpt[pn] & PTE_P && uvpt[pn] & PTE_SHARE) {
+				if ((err = sys_page_map(0, addr, child, addr, uvpt[pn] & PTE_SYSCALL)) < 0) {
+					return err;
+				}
+			}
+		}
+	}
 	// LAB 11: Your code here.
 	return 0;
 }

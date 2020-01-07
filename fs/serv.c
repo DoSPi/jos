@@ -216,8 +216,6 @@ serve_read(envid_t envid, union Fsipc *ipc)
 	// Lab 10: Your code here:
 	if ((err = openfile_lookup(envid, req->req_fileid, &file)) < 0)
 		return err;
-	if (req->req_n > sizeof(ret->ret_buf))
-		return -E_INVAL;
 	if ((r = file_read(file->o_file, ret->ret_buf, req->req_n, file->o_fd->fd_offset)) > 0)
 		file->o_fd->fd_offset += r;
 	return r;
