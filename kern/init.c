@@ -14,7 +14,7 @@
 #include <kern/cpu.h>
 #include <kern/picirq.h>
 #include <kern/kclock.h>
-
+#include <inc/vsyscall.h>
 void
 i386_init(void)
 {
@@ -84,6 +84,7 @@ i386_init(void)
 	kbd_intr();
 
 	// Schedule and run the first user environment!
+	vsys[VSYS_gettime] = gettime();
 	sched_yield();
 }
 

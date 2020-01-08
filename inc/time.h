@@ -60,7 +60,7 @@ void mktime(int time, struct tm *tm)
         time -= d_to_s(months[month]);
         month++;
     }
-    tm->tm_mon = month;
+    tm->tm_mon = month + 1;
 
     while (time > d_to_s(1)) {
         time -= d_to_s(1);
